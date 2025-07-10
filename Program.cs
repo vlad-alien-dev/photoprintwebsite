@@ -1,4 +1,4 @@
-using PhotoUploader3.Components;
+using PhotoUploader.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
