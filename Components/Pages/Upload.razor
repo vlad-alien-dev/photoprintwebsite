@@ -1,0 +1,254 @@
+﻿@page "/upload"
+@inject HttpClient Http
+
+@rendermode InteractiveServer
+
+<PageTitle>Upload</PageTitle>
+
+<h1>Upload photos</h1>
+
+<InputFile OnChange="HandleSelected" multiple />
+@* <button class="btn btn-primary mt-2" @onclick="UploadFiles" disabled="@(!files?.Any() ?? true)">Upload</button> *@
+<button class="btn btn-primary mt-2"
+        @onclick="UploadFiles"
+        disabled="@((!photos?.Any() ?? true )|| isUploading)">
+    @if (isUploading)
+    {
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <span>Uploading...</span>
+    }
+    else
+    {
+        <span>Upload</span>
+    }
+</button>
+
+@if (uploadResults.Count > 0)
+{
+    <h5 class="mt-3">Results:</h5>
+    <ul>
+        @foreach (var result in uploadResults)
+        {
+            <li>@result</li>
+        }
+    </ul>
+}
+
+<!-- Top Ribbon -->
+
+<div class="ribbon sticky-top bg-dark text-white d-flex justify-content-between p-2">
+    <span>Total Photos: @(photos?.Count ?? 0)</span>
+    <span>Total Price: $@TotalPrice.ToString("0.00")</span>
+    @if (photos?.Count > 0)
+    {
+        <button class="btn btn-success" @onclick="PlaceOrder">Order</button>
+    }
+</div>
+
+
+<!-- Uploaded Files Preview -->
+@if (photos?.Count > 0)
+{
+    <div class="container">
+        @foreach (var photo in photos)
+        {
+            <div class="card mb-3 shadow-sm">
+                <div class="row g-0 align-items-center">
+                    <div class="col-md-2 p-2">
+                        <img src="@photo.PreviewUrl" class="img-thumbnail" style="max-height: 100px;" />
+                    </div>
+                    <div class="col-md-10">
+                        <div class="card-body d-flex flex-wrap align-items-center">
+                            <div class="me-3">
+                                <label>Size:</label>
+                                <select class="form-select" @bind="photo.Size" @bind:after="() => UpdatePrice(photo)">
+                                    @foreach (var s in sizeOptions)
+                                    {
+                                        <option value="@s.Key">@s.Key @s.Value lv</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="me-3">
+                                <label>Paper Type:</label>
+                                <select class="form-select" @bind="photo.PaperType">
+                                    <option value="Glossy">Glossy</option>
+                                    <option value="Matte">Matte</option>
+                                </select>
+                            </div>
+                            <div class="me-3">
+                                <label>Quantity:</label>
+                                <input type="number" min="1" class="form-control" value="@photo.Quantity" @oninput="e => OnQuantityChanged(photo, e)" />
+                            </div>
+                            <div class="me-3">
+                                <label>Price:</label>
+                                <div>$@photo.TotalPrice.ToString("0.00")</div>
+                            </div>
+                            <div class="me-3">
+                                <button class="btn btn-outline-danger" @onclick="() => RemovePhoto(photo)">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+
+@if (files?.Count > 0)
+{
+    <div class="ribbon sticky-bottom bg-dark text-white d-flex justify-content-between p-2">
+        <span>Total Photos: @(photos?.Count ?? 0)</span>
+        <span>Total Price: $@TotalPrice.ToString("0.00")</span>
+        <button class="btn btn-success" @onclick="PlaceOrder">Order</button>
+    </div>
+}
+
+
+@code {
+
+    private bool isUploading = false;
+
+    private IReadOnlyList<IBrowserFile>? files = default;
+    private List<PhotoUploadModel> photos = new();
+    private Dictionary<string, decimal> sizeOptions = new()
+    {
+        { "Small", 0.25m },
+        { "Medium", 0.5m },
+        { "Large", 0.75m },
+        { "XL", 1.00m }
+    };
+    private List<string> uploadResults = new();
+
+    private decimal TotalPrice => photos.Sum(p => p.TotalPrice);
+
+    private async void HandleSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(maximumFileCount: 500))
+        {
+            var buffer = new byte[file.Size];
+
+            // Create a longer timeout (e.g., 1 minute)
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024, cancellationToken: cts.Token);
+
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms, cts.Token);
+
+            //await stream.ReadAsync(buffer, cts.Token);
+
+            var base64 = Convert.ToBase64String(ms.ToArray());
+            var previewUrl = $"data:{file.ContentType};base64,{base64}";
+
+            var newPhoto = new PhotoUploadModel
+                {
+                    File = file,
+                    PreviewUrl = previewUrl,
+                    Size = "Small",
+                    PaperType = "Glossy",
+                    Quantity = 1,
+                    UnitPrice = sizeOptions["Small"]
+                };
+
+            newPhoto.UpdatePrice();
+            photos.Add(newPhoto);
+        }
+        files = e.GetMultipleFiles(maximumFileCount: 500);
+        uploadResults.Clear();
+        StateHasChanged();
+    }
+
+
+    private async Task UploadFiles()
+    {
+        if (files is null) return;
+
+        isUploading = true;
+        uploadResults.Clear(); // optional: clear results on new upload
+        StateHasChanged(); // update UI immediately
+
+        var batchSize = 50;
+        var fileList = files.ToList();
+
+        for (int i = 0; i < fileList.Count; i += batchSize)
+        {
+            var batch = fileList.Skip(i).Take(batchSize).ToList();
+            await UploadBatch(batch);
+            await Task.Delay(500); // Give Blazor time to recover
+        }
+
+        isUploading = false;
+        StateHasChanged();
+    }
+
+    private async Task UploadBatch(List<IBrowserFile> batch)
+    {
+        foreach (var file in batch)
+        {
+            try
+            {
+                var content = new MultipartFormDataContent();
+                var stream = file.OpenReadStream(20 * 1024 * 1024); // 20 MB limit
+                content.Add(new StreamContent(stream), "file", file.Name);
+
+                var response = await Http.PostAsync("https://photoprintapi.azurewebsites.net/api/upload", content);
+                //var response = await Http.PostAsync("http://localhost:5268/api/upload", content);
+                var result = await response.Content.ReadAsStringAsync();
+
+                uploadResults.Add(response.IsSuccessStatusCode
+                    ? $"✅ {file.Name} uploaded successfully."
+                    : $"❌ {file.Name} failed: {result}");
+            }
+            catch (Exception ex)
+            {
+                uploadResults.Add($"❌ {file.Name} failed: {ex.Message}");
+            }
+        }
+    }
+    private void OnQuantityChanged(PhotoUploadModel photo, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var qty))
+        {
+            photo.Quantity = qty;
+            UpdatePrice(photo);
+        }
+    }
+
+    private void UpdatePrice(PhotoUploadModel photo)
+    {
+        if (sizeOptions.TryGetValue(photo.Size, out var price))
+        {
+            photo.UnitPrice = price;
+        }
+        photo.UpdatePrice();
+    }
+
+
+    private void RemovePhoto(PhotoUploadModel photo)
+    {
+        photos.Remove(photo);
+    }
+
+    private void PlaceOrder()
+    {
+        // TODO: Send order details and upload photos to blob
+    }
+
+    public class PhotoUploadModel
+    {
+        public IBrowserFile File { get; set; }
+        public string PreviewUrl { get; set; }
+
+        public string Size { get; set; } = "Small";
+        public string PaperType { get; set; } = "Glossy";
+        public int Quantity { get; set; } = 1;
+
+        public decimal UnitPrice { get; set; }
+        public decimal TotalPrice { get; set; }
+
+        public void UpdatePrice()
+        {
+            TotalPrice = UnitPrice * Quantity;
+        }
+    }
+}
