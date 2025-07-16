@@ -68,7 +68,7 @@
         <span>Total Price: $@TotalPrice.ToString("0.00")</span>
         <div>
             <button class="btn btn-warning me-2" @onclick="OpenConfirmPopup">Finish Order</button>
-            <button class="btn btn-success" @* @onclick="PlaceOrder" *@>Order</button>
+            <button class="btn btn-success" @onclick="PlaceOrder">Order</button>
         </div>
     </div>
 }
@@ -131,7 +131,7 @@
         <span>Total Price: $@TotalPrice.ToString("0.00")</span>
         <div>
             <button class="btn btn-warning me-2" @onclick="OpenConfirmPopup">Finish Order</button>
-            <button class="btn btn-success" @* @onclick="PlaceOrder" *@>Order</button>
+            <button class="btn btn-success" @onclick="PlaceOrder">Order</button>
         </div>
     </div>
 }
@@ -287,6 +287,39 @@
         Console.WriteLine("✅ Order finalized.");
     }
 
+    private async Task PlaceOrder()
+    {
+        // if (!canPlaceOrder)
+        // {
+        //     // Show message to finish upload first
+        //     return;
+        // }
+
+        var order = new
+        {
+            Photos = photos.Select(p => new
+            {
+                FileName = p.File.Name,
+                Size = p.Size,
+                PaperType = p.PaperType,
+                Quantity = p.Quantity,
+                Total = p.TotalPrice,
+                // Optionally: UploadedUrl = p.UploadedUrl
+            }),
+            TotalPrice = TotalPrice
+        };
+
+        var response = await Http.PostAsJsonAsync("https://your-api/order", order);
+        if (response.IsSuccessStatusCode)
+        {
+            // Show success, redirect, etc.
+        }
+        else
+        {
+            // Show error
+        }
+    }
+
 
     public class PhotoUploadModel
     {
@@ -305,4 +338,18 @@
             TotalPrice = UnitPrice * Quantity;
         }
     }
+
+    private List<PhotoItem> cartItems = new();
+
+    public class PhotoItem
+    {
+        public IBrowserFile File { get; set; }
+        public string FileName { get; set; }
+        public string PaperType { get; set; }
+        public string Size { get; set; }
+        public int Quantity { get; set; }
+        public decimal Price => (Size == "6x4") ? 0.20m : 0.35m;
+        public decimal Total => Price * Quantity;
+    }
+
 }
