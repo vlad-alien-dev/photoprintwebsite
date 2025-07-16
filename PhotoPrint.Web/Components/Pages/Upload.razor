@@ -1,12 +1,13 @@
 ﻿@page "/upload"
 @inject HttpClient Http
+@inject IJSRuntime JS
 
 @rendermode InteractiveServer
 
 <PageTitle>Upload</PageTitle>
 
 <h1>Upload photos</h1>
-<InputFile OnChange="HandleSelected" multiple />
+<InputFile id="fileInput" OnChange="HandleSelected" multiple />
 
 @* 
 <div class="sticky-top bg-white p-2 border-bottom z-3">
@@ -159,19 +160,28 @@
     {
         foreach (var file in e.GetMultipleFiles(maximumFileCount: 500))
         {
-            var buffer = new byte[file.Size];
+            // var buffer = new byte[file.Size];
 
-            // Create a longer timeout (e.g., 1 minute)
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
-            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024, cancellationToken: cts.Token);
+            // // Create a longer timeout (e.g., 1 minute)
+            // using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            // using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024, cancellationToken: cts.Token);
 
-            using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms, cts.Token);
+            // using var ms = new MemoryStream();
+            // await stream.CopyToAsync(ms, cts.Token);
 
-            //await stream.ReadAsync(buffer, cts.Token);
+            // //await stream.ReadAsync(buffer, cts.Token);
 
-            var base64 = Convert.ToBase64String(ms.ToArray());
-            var previewUrl = $"data:{file.ContentType};base64,{base64}";
+            // var base64 = Convert.ToBase64String(ms.ToArray());
+            // var previewUrl = $"data:{file.ContentType};base64,{base64}";
+
+            // // var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            // // var buffer = new byte[file.Size];
+            // // await stream.ReadAsync(buffer);
+
+            // // var previewUrl = await JS.InvokeAsync<string>("createObjectURL", file);
+
+            var jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+            var previewUrl = await jsModule.InvokeAsync<string>("createObjectURLFromInput", "fileInput");
 
             var newPhoto = new PhotoUploadModel
                 {
