@@ -1,8 +1,7 @@
-﻿export function createObjectURLFromInput(inputId) {
+﻿export function createObjectURLFromInput(inputId, index) {
     const input = document.getElementById(inputId);
-    if (!input || !input.files || input.files.length === 0) {
-        throw new Error("File input not found or no file selected");
+    if (input && input.files && input.files.length > index) {
+        return URL.createObjectURL(input.files[index]);
     }
-    const file = input.files[0];
-    return URL.createObjectURL(file);
+    return null;
 }
